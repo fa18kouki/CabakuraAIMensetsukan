@@ -370,11 +370,27 @@ export default function VoiceInterview() {
 
   return (
     <div className="flex flex-col items-center justify-between min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-8">
-      <header className="text-center">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-          キャバクラ AI 面接
-        </h1>
-        <p className="text-gray-400 mt-2">AI面接官があなたをお待ちしています</p>
+      <header className="text-center w-full">
+        <div className="flex justify-between items-start">
+          <a
+            href="/chat"
+            className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
+          >
+            チャットはこちら
+          </a>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
+              キャバクラ AI 面接
+            </h1>
+            <p className="text-gray-400 mt-2">AI面接官があなたをお待ちしています</p>
+          </div>
+          <a
+            href="/admin"
+            className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
+          >
+            管理者
+          </a>
+        </div>
       </header>
 
       <main className="flex flex-col items-center gap-8 flex-1 justify-center w-full">
