@@ -1,56 +1,24 @@
 "use client";
 
 import { useVapi, SpeakerStatus } from "@/hooks/useVapi";
-import { useEffect, useRef } from "react";
-
-const VAPI_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || "";
-
-const ASSISTANT_CONFIG = {
-  name: "キャバクラ面接官",
-  firstMessage:
-    "こんにちは！本日は面接にお越しいただきありがとうございます。私はAI面接官の美咲です。リラックスしてお話しくださいね。まずは、お名前と年齢を教えていただけますか？",
-  model: {
-    provider: "openai",
-    model: "gpt-4o",
-    systemPrompt: `あなたはキャバクラの面接官「美咲」です。
-候補者に対して丁寧かつフレンドリーに接してください。
-
-面接の流れ：
-1. 自己紹介（名前、年齢）
-2. 志望動機（なぜキャバクラで働きたいか）
-3. 接客経験の有無
-4. シフトの希望（週何日、何時から何時まで働けるか）
-5. 自分の長所・アピールポイント
-6. 質問があるか
-
-面接官としての注意点：
-- 常に明るく、優しい口調で話す
-- 候補者の緊張をほぐすような声かけをする
-- 回答に対して適切なフォローアップ質問をする
-- 不適切な質問はしない
-- 面接の最後には「本日はありがとうございました」と締める
-- 日本語で会話する
-
-回答は簡潔に、自然な会話のように話してください。長すぎる説明は避けてください。`,
-  },
-  voice: {
-    provider: "11labs",
-    voiceId: "21m00Tcm4TlvDq8ikWAM", // Rachel - 女性の声
-  },
-};
+import { trpc } from "@/trpc/client";
+import { useEffect, useRef, useState } from "react";
 
 function MicButton({
   isActive,
   status,
   volumeLevel,
   onClick,
+  disabled,
 }: {
   isActive: boolean;
   status: SpeakerStatus;
   volumeLevel: number;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   const getStatusColor = () => {
+    if (disabled) return "bg-gray-700";
     switch (status) {
       case "user-speaking":
         return "bg-green-500 shadow-green-500/50";
@@ -64,6 +32,7 @@ function MicButton({
   };
 
   const getStatusText = () => {
+    if (disabled) return "読み込み中...";
     switch (status) {
       case "user-speaking":
         return "あなたが話しています";
@@ -82,11 +51,11 @@ function MicButton({
     <div className="flex flex-col items-center gap-6">
       <button
         onClick={onClick}
-        className={`relative w-32 h-32 rounded-full transition-all duration-200 shadow-lg ${getStatusColor()}`}
+        disabled={disabled}
+        className={`relative w-32 h-32 rounded-full transition-all duration-200 shadow-lg ${getStatusColor()} ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
         style={{ transform: `scale(${scale})` }}
       >
-        {/* Outer ring animation for active states */}
-        {isActive && (
+        {isActive && !disabled && (
           <>
             <span
               className={`absolute inset-0 rounded-full animate-ping opacity-30 ${getStatusColor()}`}
@@ -105,24 +74,21 @@ function MicButton({
           </>
         )}
 
-        {/* Mic Icon */}
         <svg
           className="w-12 h-12 mx-auto text-white"
           fill="currentColor"
           viewBox="0 0 24 24"
         >
-          {isActive ? (
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93V7h2v1c0 2.76 2.24 5 5 5s5-2.24 5-5V7h2v1c0 4.08-3.06 7.44-7 7.93V19h3v2H9v-2h3v-3.07z" />
-          ) : (
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93V7h2v1c0 2.76 2.24 5 5 5s5-2.24 5-5V7h2v1c0 4.08-3.06 7.44-7 7.93V19h3v2H9v-2h3v-3.07z" />
-          )}
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93V7h2v1c0 2.76 2.24 5 5 5s5-2.24 5-5V7h2v1c0 4.08-3.06 7.44-7 7.93V19h3v2H9v-2h3v-3.07z" />
         </svg>
       </button>
 
       <div className="text-center">
         <p
           className={`text-lg font-medium ${
-            status === "user-speaking"
+            disabled
+              ? "text-gray-500"
+              : status === "user-speaking"
               ? "text-green-400"
               : status === "ai-speaking"
               ? "text-purple-400"
@@ -133,7 +99,7 @@ function MicButton({
         >
           {getStatusText()}
         </p>
-        {!isActive && (
+        {!isActive && !disabled && (
           <p className="text-sm text-gray-500 mt-1">
             マイクをタップして面接を開始
           </p>
@@ -191,7 +157,6 @@ function TranscriptDisplay({
         </div>
       ))}
 
-      {/* Current transcript being spoken */}
       {currentTranscript && (
         <div
           className={`flex ${
@@ -217,8 +182,15 @@ function TranscriptDisplay({
 }
 
 export default function VoiceInterview() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  // tRPCでサーバーから設定を取得
+  const { data: config, isLoading: configLoading } = trpc.interview.getConfig.useQuery();
+  const startSessionMutation = trpc.interview.startSession.useMutation();
+  const endSessionMutation = trpc.interview.endSession.useMutation();
+  const saveMessageMutation = trpc.interview.saveMessage.useMutation();
+
   const {
-    isConnected,
     isCallActive,
     speakerStatus,
     messages,
@@ -226,11 +198,37 @@ export default function VoiceInterview() {
     volumeLevel,
     toggleCall,
   } = useVapi({
-    publicKey: VAPI_PUBLIC_KEY,
-    assistantConfig: ASSISTANT_CONFIG,
+    publicKey: config?.publicKey || "",
+    assistantConfig: config?.assistant,
+    onMessageFinalized: (role, content) => {
+      // メッセージが確定したらサーバーに保存
+      if (sessionId) {
+        saveMessageMutation.mutate({
+          sessionId,
+          role: role as "user" | "assistant",
+          content,
+        });
+      }
+    },
   });
 
-  if (!VAPI_PUBLIC_KEY) {
+  // 通話開始時にセッションを作成
+  useEffect(() => {
+    if (isCallActive && !sessionId) {
+      startSessionMutation.mutate(undefined, {
+        onSuccess: (data) => {
+          setSessionId(data.sessionId);
+        },
+      });
+    } else if (!isCallActive && sessionId) {
+      endSessionMutation.mutate({ sessionId });
+      setSessionId(null);
+    }
+  }, [isCallActive, sessionId, startSessionMutation, endSessionMutation]);
+
+  const isReady = !configLoading && config?.publicKey;
+
+  if (!configLoading && !config?.publicKey) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-8">
         <div className="bg-red-900/50 border border-red-500 rounded-lg p-6 max-w-md text-center">
@@ -251,7 +249,6 @@ export default function VoiceInterview() {
 
   return (
     <div className="flex flex-col items-center justify-between min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-8">
-      {/* Header */}
       <header className="text-center">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
           キャバクラ AI 面接
@@ -259,13 +256,13 @@ export default function VoiceInterview() {
         <p className="text-gray-400 mt-2">AI面接官があなたをお待ちしています</p>
       </header>
 
-      {/* Main Content */}
       <main className="flex flex-col items-center gap-8 flex-1 justify-center w-full">
         <MicButton
           isActive={isCallActive}
           status={speakerStatus}
           volumeLevel={volumeLevel}
           onClick={toggleCall}
+          disabled={!isReady}
         />
 
         <TranscriptDisplay
@@ -275,7 +272,6 @@ export default function VoiceInterview() {
         />
       </main>
 
-      {/* Footer */}
       <footer className="text-center text-gray-500 text-sm">
         {isCallActive ? (
           <button

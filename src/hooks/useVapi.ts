@@ -27,9 +27,10 @@ interface UseVapiOptions {
       voiceId: string;
     };
   };
+  onMessageFinalized?: (role: string, content: string) => void;
 }
 
-export function useVapi({ publicKey, assistantId, assistantConfig }: UseVapiOptions) {
+export function useVapi({ publicKey, assistantId, assistantConfig, onMessageFinalized }: UseVapiOptions) {
   const vapiRef = useRef<Vapi | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
@@ -37,6 +38,12 @@ export function useVapi({ publicKey, assistantId, assistantConfig }: UseVapiOpti
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentTranscript, setCurrentTranscript] = useState("");
   const [volumeLevel, setVolumeLevel] = useState(0);
+  const onMessageFinalizedRef = useRef(onMessageFinalized);
+
+  // Keep callback ref up to date
+  useEffect(() => {
+    onMessageFinalizedRef.current = onMessageFinalized;
+  }, [onMessageFinalized]);
 
   useEffect(() => {
     if (!publicKey) return;
@@ -72,14 +79,20 @@ export function useVapi({ publicKey, assistantId, assistantConfig }: UseVapiOpti
           }
         } else if (message.transcriptType === "final") {
           if (message.transcript.trim()) {
+            const role = message.role as "user" | "assistant";
+            const content = message.transcript;
+
             setMessages((prev) => [
               ...prev,
               {
-                role: message.role as "user" | "assistant",
-                content: message.transcript,
+                role,
+                content,
                 timestamp: new Date(),
               },
             ]);
+
+            // Callback for server-side persistence
+            onMessageFinalizedRef.current?.(role, content);
           }
           setCurrentTranscript("");
           if (message.role === "user") {
