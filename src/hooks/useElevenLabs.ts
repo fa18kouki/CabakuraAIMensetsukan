@@ -1,15 +1,8 @@
 "use client";
 
-import { useConversation, type SessionConfig } from "@elevenlabs/react";
+import { useConversation } from "@elevenlabs/react";
 import { useCallback, useState, useEffect, useRef } from "react";
-
-export type SpeakerStatus = "idle" | "user-speaking" | "ai-speaking" | "ai-thinking";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-}
+import type { SpeakerStatus, Message } from "@/types/voice";
 
 interface UseElevenLabsOptions {
   agentId: string;

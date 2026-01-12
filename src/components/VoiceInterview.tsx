@@ -4,6 +4,7 @@ import { useVapi } from "@/hooks/useVapi";
 import { useElevenLabs } from "@/hooks/useElevenLabs";
 import { trpc } from "@/trpc/client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { SpeakerStatus, VoiceProvider, Message } from "@/types/voice";
 
 function ProviderSelector({
@@ -218,12 +219,14 @@ function TranscriptDisplay({
   );
 }
 
-// Vapi用のインタビューコンポーネント
-function VapiInterview({
+// Vapi用のカスタムフック
+function useVapiInterview({
+  isActive,
   sessionId,
   setSessionId,
   onMessageFinalized,
 }: {
+  isActive: boolean;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
   onMessageFinalized: (role: string, content: string) => void;
@@ -235,10 +238,12 @@ function VapiInterview({
   const vapiHook = useVapi({
     publicKey: vapiConfig?.publicKey || "",
     assistantConfig: vapiConfig?.assistant,
-    onMessageFinalized,
+    onMessageFinalized: isActive ? onMessageFinalized : undefined,
   });
 
   useEffect(() => {
+    if (!isActive) return;
+
     if (vapiHook.isCallActive && !sessionId) {
       startSessionMutation.mutate(
         { provider: "vapi" },
@@ -250,7 +255,7 @@ function VapiInterview({
       endSessionMutation.mutate({ sessionId });
       setSessionId(null);
     }
-  }, [vapiHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
+  }, [isActive, vapiHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
 
   const isReady = !isLoading && !!vapiConfig?.publicKey;
 
@@ -260,12 +265,14 @@ function VapiInterview({
   };
 }
 
-// ElevenLabs用のインタビューコンポーネント
-function ElevenLabsInterview({
+// ElevenLabs用のカスタムフック
+function useElevenLabsInterview({
+  isActive,
   sessionId,
   setSessionId,
   onMessageFinalized,
 }: {
+  isActive: boolean;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
   onMessageFinalized: (role: string, content: string) => void;
@@ -276,10 +283,12 @@ function ElevenLabsInterview({
 
   const elevenLabsHook = useElevenLabs({
     agentId: elevenLabsConfig?.agentId || "",
-    onMessageFinalized,
+    onMessageFinalized: isActive ? onMessageFinalized : undefined,
   });
 
   useEffect(() => {
+    if (!isActive) return;
+
     if (elevenLabsHook.isCallActive && !sessionId) {
       startSessionMutation.mutate(
         { provider: "elevenlabs" },
@@ -291,7 +300,7 @@ function ElevenLabsInterview({
       endSessionMutation.mutate({ sessionId });
       setSessionId(null);
     }
-  }, [elevenLabsHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
+  }, [isActive, elevenLabsHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
 
   const isReady = !isLoading && !!elevenLabsConfig?.agentId;
 
@@ -331,17 +340,19 @@ export default function VoiceInterview() {
   }, [providers, selectedProvider]);
 
   // Vapi hook
-  const vapiResult = VapiInterview({
-    sessionId: selectedProvider === "vapi" ? sessionId : null,
-    setSessionId: selectedProvider === "vapi" ? setSessionId : () => {},
-    onMessageFinalized: selectedProvider === "vapi" ? handleMessageFinalized : () => {},
+  const vapiResult = useVapiInterview({
+    isActive: selectedProvider === "vapi",
+    sessionId,
+    setSessionId,
+    onMessageFinalized: handleMessageFinalized,
   });
 
   // ElevenLabs hook
-  const elevenLabsResult = ElevenLabsInterview({
-    sessionId: selectedProvider === "elevenlabs" ? sessionId : null,
-    setSessionId: selectedProvider === "elevenlabs" ? setSessionId : () => {},
-    onMessageFinalized: selectedProvider === "elevenlabs" ? handleMessageFinalized : () => {},
+  const elevenLabsResult = useElevenLabsInterview({
+    isActive: selectedProvider === "elevenlabs",
+    sessionId,
+    setSessionId,
+    onMessageFinalized: handleMessageFinalized,
   });
 
   // 現在のプロバイダーの結果を取得
@@ -372,24 +383,24 @@ export default function VoiceInterview() {
     <div className="flex flex-col items-center justify-between min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-8">
       <header className="text-center w-full">
         <div className="flex justify-between items-start">
-          <a
+          <Link
             href="/chat"
             className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
           >
             チャットはこちら
-          </a>
+          </Link>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
               キャバクラ AI 面接
             </h1>
             <p className="text-gray-400 mt-2">AI面接官があなたをお待ちしています</p>
           </div>
-          <a
+          <Link
             href="/admin"
             className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
           >
             管理者
-          </a>
+          </Link>
         </div>
       </header>
 

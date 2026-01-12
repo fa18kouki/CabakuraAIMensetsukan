@@ -26,6 +26,11 @@ function getOpenRouterClient(): OpenAI {
   return openrouter;
 }
 
+// AI設定
+const AI_MODEL = "google/gemini-2.0-flash-001";
+const AI_TEMPERATURE = 0.7;
+const AI_MAX_TOKENS = 500;
+
 // 必須項目のリストをプロンプトに含める
 const REQUIRED_FIELDS_FOR_PROMPT = REQUIRED_FIELDS.map(
   (field) => `- ${FIELD_LABELS[field]}`
@@ -111,7 +116,7 @@ export const chatRouter = router({
         // OpenRouter API (Gemini) を呼び出し
         const client = getOpenRouterClient();
         const response = await client.chat.completions.create({
-          model: "google/gemini-2.0-flash-001",
+          model: AI_MODEL,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             ...session.messages.map((m) => ({
@@ -119,8 +124,8 @@ export const chatRouter = router({
               content: m.content,
             })),
           ],
-          temperature: 0.7,
-          max_tokens: 500,
+          temperature: AI_TEMPERATURE,
+          max_tokens: AI_MAX_TOKENS,
         });
 
         const reply = response.choices[0]?.message?.content || "申し訳ありません、回答できませんでした。";
@@ -140,7 +145,7 @@ export const chatRouter = router({
           isComplete: isProfileComplete(session.profile),
         };
       } catch (error) {
-        console.error("OpenAI API error:", error);
+        console.error("OpenRouter API error:", error);
         return {
           success: false,
           reply: "",

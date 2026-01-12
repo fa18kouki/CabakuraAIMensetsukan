@@ -2,6 +2,7 @@
 
 import { trpc } from "@/trpc/client";
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 
 interface Message {
   role: "user" | "assistant";
@@ -14,21 +15,23 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sessionStartedRef = useRef(false);
 
   const startSessionMutation = trpc.chat.startSession.useMutation();
   const sendMessageMutation = trpc.chat.sendMessage.useMutation();
 
-  // セッション開始
+  // セッション開始（初回のみ）
   useEffect(() => {
-    if (!sessionId) {
-      startSessionMutation.mutate(undefined, {
-        onSuccess: (data) => {
-          setSessionId(data.sessionId);
-          setMessages([{ role: "assistant", content: data.firstMessage }]);
-        },
-      });
-    }
-  }, [sessionId, startSessionMutation]);
+    if (sessionStartedRef.current) return;
+    sessionStartedRef.current = true;
+
+    startSessionMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setSessionId(data.sessionId);
+        setMessages([{ role: "assistant", content: data.firstMessage }]);
+      },
+    });
+  }, [startSessionMutation]);
 
   // 自動スクロール
   useEffect(() => {
@@ -65,11 +68,11 @@ export default function ChatPage() {
       <header className="border-b border-gray-800 p-4">
         <div className="max-w-3xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <a href="/" className="text-gray-400 hover:text-white">
+            <Link href="/" className="text-gray-400 hover:text-white">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </a>
+            </Link>
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
                 チャット面接
@@ -77,12 +80,12 @@ export default function ChatPage() {
               <p className="text-gray-500 text-xs">テキストで面接を受ける</p>
             </div>
           </div>
-          <a
+          <Link
             href="/admin"
             className="text-gray-500 hover:text-gray-300 text-sm"
           >
             管理者
-          </a>
+          </Link>
         </div>
       </header>
 

@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Vapi from "@vapi-ai/web";
-
-export type SpeakerStatus = "idle" | "user-speaking" | "ai-speaking" | "ai-thinking";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-}
+import type { SpeakerStatus, Message } from "@/types/voice";
 
 interface UseVapiOptions {
   publicKey: string;

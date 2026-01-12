@@ -4,6 +4,7 @@ import { trpc } from "@/trpc/client";
 import { FIELD_LABELS, getCompletionPercentage } from "@/types/candidate";
 import type { Candidate, CandidateProfile } from "@/types/candidate";
 import { useState } from "react";
+import Link from "next/link";
 
 function StatusBadge({ status }: { status: Candidate["status"] }) {
   const colors = {
@@ -278,12 +279,12 @@ export default function AdminPage() {
             </h1>
             <p className="text-gray-400 text-sm mt-1">面接候補者一覧</p>
           </div>
-          <a
+          <Link
             href="/"
             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
           >
             面接画面へ
-          </a>
+          </Link>
         </div>
       </header>
 
