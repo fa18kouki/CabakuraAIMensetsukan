@@ -1,8 +1,45 @@
 "use client";
 
-import { useVapi, SpeakerStatus } from "@/hooks/useVapi";
+import { useVapi } from "@/hooks/useVapi";
+import { useElevenLabs } from "@/hooks/useElevenLabs";
 import { trpc } from "@/trpc/client";
 import { useEffect, useRef, useState } from "react";
+import type { SpeakerStatus, VoiceProvider, Message } from "@/types/voice";
+
+function ProviderSelector({
+  providers,
+  selected,
+  onChange,
+  disabled,
+}: {
+  providers: Array<{ id: VoiceProvider; name: string; available: boolean }>;
+  selected: VoiceProvider;
+  onChange: (provider: VoiceProvider) => void;
+  disabled: boolean;
+}) {
+  const availableProviders = providers.filter((p) => p.available);
+
+  if (availableProviders.length <= 1) return null;
+
+  return (
+    <div className="flex gap-2 mb-4">
+      {availableProviders.map((provider) => (
+        <button
+          key={provider.id}
+          onClick={() => onChange(provider.id)}
+          disabled={disabled}
+          className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            selected === provider.id
+              ? "bg-purple-600 text-white"
+              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+        >
+          {provider.name}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function MicButton({
   isActive,
@@ -114,7 +151,7 @@ function TranscriptDisplay({
   currentTranscript,
   speakerStatus,
 }: {
-  messages: { role: string; content: string; timestamp: Date }[];
+  messages: Message[];
   currentTranscript: string;
   speakerStatus: SpeakerStatus;
 }) {
@@ -181,67 +218,151 @@ function TranscriptDisplay({
   );
 }
 
-export default function VoiceInterview() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
-
-  // tRPCでサーバーから設定を取得
-  const { data: config, isLoading: configLoading } = trpc.interview.getConfig.useQuery();
+// Vapi用のインタビューコンポーネント
+function VapiInterview({
+  sessionId,
+  setSessionId,
+  onMessageFinalized,
+}: {
+  sessionId: string | null;
+  setSessionId: (id: string | null) => void;
+  onMessageFinalized: (role: string, content: string) => void;
+}) {
+  const { data: vapiConfig, isLoading } = trpc.interview.getVapiConfig.useQuery();
   const startSessionMutation = trpc.interview.startSession.useMutation();
   const endSessionMutation = trpc.interview.endSession.useMutation();
-  const saveMessageMutation = trpc.interview.saveMessage.useMutation();
 
-  const {
-    isCallActive,
-    speakerStatus,
-    messages,
-    currentTranscript,
-    volumeLevel,
-    toggleCall,
-  } = useVapi({
-    publicKey: config?.publicKey || "",
-    assistantConfig: config?.assistant,
-    onMessageFinalized: (role, content) => {
-      // メッセージが確定したらサーバーに保存
-      if (sessionId) {
-        saveMessageMutation.mutate({
-          sessionId,
-          role: role as "user" | "assistant",
-          content,
-        });
-      }
-    },
+  const vapiHook = useVapi({
+    publicKey: vapiConfig?.publicKey || "",
+    assistantConfig: vapiConfig?.assistant,
+    onMessageFinalized,
   });
 
-  // 通話開始時にセッションを作成
   useEffect(() => {
-    if (isCallActive && !sessionId) {
-      startSessionMutation.mutate(undefined, {
-        onSuccess: (data) => {
-          setSessionId(data.sessionId);
-        },
-      });
-    } else if (!isCallActive && sessionId) {
+    if (vapiHook.isCallActive && !sessionId) {
+      startSessionMutation.mutate(
+        { provider: "vapi" },
+        {
+          onSuccess: (data) => setSessionId(data.sessionId),
+        }
+      );
+    } else if (!vapiHook.isCallActive && sessionId) {
       endSessionMutation.mutate({ sessionId });
       setSessionId(null);
     }
-  }, [isCallActive, sessionId, startSessionMutation, endSessionMutation]);
+  }, [vapiHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
 
-  const isReady = !configLoading && config?.publicKey;
+  const isReady = !isLoading && !!vapiConfig?.publicKey;
 
-  if (!configLoading && !config?.publicKey) {
+  return {
+    ...vapiHook,
+    isReady,
+  };
+}
+
+// ElevenLabs用のインタビューコンポーネント
+function ElevenLabsInterview({
+  sessionId,
+  setSessionId,
+  onMessageFinalized,
+}: {
+  sessionId: string | null;
+  setSessionId: (id: string | null) => void;
+  onMessageFinalized: (role: string, content: string) => void;
+}) {
+  const { data: elevenLabsConfig, isLoading } = trpc.interview.getElevenLabsConfig.useQuery();
+  const startSessionMutation = trpc.interview.startSession.useMutation();
+  const endSessionMutation = trpc.interview.endSession.useMutation();
+
+  const elevenLabsHook = useElevenLabs({
+    agentId: elevenLabsConfig?.agentId || "",
+    onMessageFinalized,
+  });
+
+  useEffect(() => {
+    if (elevenLabsHook.isCallActive && !sessionId) {
+      startSessionMutation.mutate(
+        { provider: "elevenlabs" },
+        {
+          onSuccess: (data) => setSessionId(data.sessionId),
+        }
+      );
+    } else if (!elevenLabsHook.isCallActive && sessionId) {
+      endSessionMutation.mutate({ sessionId });
+      setSessionId(null);
+    }
+  }, [elevenLabsHook.isCallActive, sessionId, startSessionMutation, endSessionMutation, setSessionId]);
+
+  const isReady = !isLoading && !!elevenLabsConfig?.agentId;
+
+  return {
+    ...elevenLabsHook,
+    isReady,
+  };
+}
+
+export default function VoiceInterview() {
+  const [selectedProvider, setSelectedProvider] = useState<VoiceProvider>("vapi");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  const { data: providers, isLoading: providersLoading } =
+    trpc.interview.getAvailableProviders.useQuery();
+
+  const saveMessageMutation = trpc.interview.saveMessage.useMutation();
+
+  const handleMessageFinalized = (role: string, content: string) => {
+    if (sessionId) {
+      saveMessageMutation.mutate({
+        sessionId,
+        role: role as "user" | "assistant",
+        content,
+      });
+    }
+  };
+
+  // 利用可能なプロバイダーに基づいてデフォルトを設定
+  useEffect(() => {
+    if (providers) {
+      const availableProvider = providers.find((p) => p.available);
+      if (availableProvider && !providers.find((p) => p.id === selectedProvider && p.available)) {
+        setSelectedProvider(availableProvider.id);
+      }
+    }
+  }, [providers, selectedProvider]);
+
+  // Vapi hook
+  const vapiResult = VapiInterview({
+    sessionId: selectedProvider === "vapi" ? sessionId : null,
+    setSessionId: selectedProvider === "vapi" ? setSessionId : () => {},
+    onMessageFinalized: selectedProvider === "vapi" ? handleMessageFinalized : () => {},
+  });
+
+  // ElevenLabs hook
+  const elevenLabsResult = ElevenLabsInterview({
+    sessionId: selectedProvider === "elevenlabs" ? sessionId : null,
+    setSessionId: selectedProvider === "elevenlabs" ? setSessionId : () => {},
+    onMessageFinalized: selectedProvider === "elevenlabs" ? handleMessageFinalized : () => {},
+  });
+
+  // 現在のプロバイダーの結果を取得
+  const currentResult = selectedProvider === "vapi" ? vapiResult : elevenLabsResult;
+
+  const isLoading = providersLoading || !currentResult.isReady;
+  const hasNoProviders = providers && !providers.some((p) => p.available);
+
+  if (hasNoProviders) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-8">
         <div className="bg-red-900/50 border border-red-500 rounded-lg p-6 max-w-md text-center">
           <h2 className="text-xl font-bold mb-2">設定が必要です</h2>
           <p className="text-gray-300 mb-4">
-            Vapi APIキーが設定されていません。
+            音声AIプロバイダーが設定されていません。
           </p>
-          <code className="bg-black/50 px-3 py-1 rounded text-sm">
-            NEXT_PUBLIC_VAPI_PUBLIC_KEY
-          </code>
-          <p className="text-gray-400 mt-4 text-sm">
-            .env.local ファイルにAPIキーを設定してください。
-          </p>
+          <div className="text-left bg-black/50 p-4 rounded text-sm space-y-2">
+            <p className="text-gray-400">以下のいずれかを .env.local に設定:</p>
+            <code className="block text-green-400">NEXT_PUBLIC_VAPI_PUBLIC_KEY=...</code>
+            <code className="block text-blue-400">NEXT_PUBLIC_ELEVENLABS_AGENT_ID=...</code>
+          </div>
         </div>
       </div>
     );
@@ -257,25 +378,34 @@ export default function VoiceInterview() {
       </header>
 
       <main className="flex flex-col items-center gap-8 flex-1 justify-center w-full">
+        {providers && (
+          <ProviderSelector
+            providers={providers}
+            selected={selectedProvider}
+            onChange={setSelectedProvider}
+            disabled={currentResult.isCallActive}
+          />
+        )}
+
         <MicButton
-          isActive={isCallActive}
-          status={speakerStatus}
-          volumeLevel={volumeLevel}
-          onClick={toggleCall}
-          disabled={!isReady}
+          isActive={currentResult.isCallActive}
+          status={currentResult.speakerStatus}
+          volumeLevel={currentResult.volumeLevel}
+          onClick={currentResult.toggleCall}
+          disabled={isLoading}
         />
 
         <TranscriptDisplay
-          messages={messages}
-          currentTranscript={currentTranscript}
-          speakerStatus={speakerStatus}
+          messages={currentResult.messages}
+          currentTranscript={currentResult.currentTranscript}
+          speakerStatus={currentResult.speakerStatus}
         />
       </main>
 
       <footer className="text-center text-gray-500 text-sm">
-        {isCallActive ? (
+        {currentResult.isCallActive ? (
           <button
-            onClick={toggleCall}
+            onClick={currentResult.toggleCall}
             className="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-full transition-colors"
           >
             面接を終了する

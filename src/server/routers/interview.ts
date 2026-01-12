@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
 
 // 面接官の設定（サーバーサイドで管理）
-const ASSISTANT_CONFIG = {
+const VAPI_ASSISTANT_CONFIG = {
   name: "キャバクラ面接官",
   firstMessage:
     "こんにちは！本日は面接にお越しいただきありがとうございます。私はAI面接官の美咲です。リラックスしてお話しくださいね。まずは、お名前と年齢を教えていただけますか？",
@@ -43,29 +43,57 @@ const interviewHistory: Map<
     id: string;
     startedAt: Date;
     endedAt?: Date;
+    provider: "vapi" | "elevenlabs";
     messages: Array<{ role: string; content: string; timestamp: Date }>;
   }
 > = new Map();
 
 export const interviewRouter = router({
-  // アシスタント設定を取得
-  getConfig: publicProcedure.query(() => {
+  // Vapi設定を取得
+  getVapiConfig: publicProcedure.query(() => {
     return {
       publicKey: process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || "",
-      assistant: ASSISTANT_CONFIG,
+      assistant: VAPI_ASSISTANT_CONFIG,
     };
   }),
 
-  // 面接セッションを開始
-  startSession: publicProcedure.mutation(() => {
-    const id = crypto.randomUUID();
-    interviewHistory.set(id, {
-      id,
-      startedAt: new Date(),
-      messages: [],
-    });
-    return { sessionId: id, startedAt: new Date() };
+  // ElevenLabs設定を取得
+  getElevenLabsConfig: publicProcedure.query(() => {
+    return {
+      agentId: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || "",
+    };
   }),
+
+  // 利用可能なプロバイダーを取得
+  getAvailableProviders: publicProcedure.query(() => {
+    const providers: Array<{ id: "vapi" | "elevenlabs"; name: string; available: boolean }> = [
+      {
+        id: "vapi",
+        name: "Vapi",
+        available: !!process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY,
+      },
+      {
+        id: "elevenlabs",
+        name: "ElevenLabs",
+        available: !!process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID,
+      },
+    ];
+    return providers;
+  }),
+
+  // 面接セッションを開始
+  startSession: publicProcedure
+    .input(z.object({ provider: z.enum(["vapi", "elevenlabs"]) }))
+    .mutation(({ input }) => {
+      const id = crypto.randomUUID();
+      interviewHistory.set(id, {
+        id,
+        startedAt: new Date(),
+        provider: input.provider,
+        messages: [],
+      });
+      return { sessionId: id, startedAt: new Date() };
+    }),
 
   // 面接セッションを終了
   endSession: publicProcedure
